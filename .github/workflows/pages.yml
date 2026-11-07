@@ -1,0 +1,55 @@
+name: Publish games from GRAFIT main
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Public GRAFIT website source commit or branch"
+        required: true
+        default: main
+permissions:
+  contents: read
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: grafitctu/grafitctu.github.io
+          ref: ${{ inputs.ref }}
+          path: upstream
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /games/
+            /assets/games/*-cover.png
+      - name: Prepare only this site
+        run: |
+          set -eu
+          mkdir _site
+          cp -a upstream/games/. _site/
+          mkdir -p _site/covers
+          for name in drinking-with-the-devil rota-est-alea spirate vivid-dreams; do
+            cp "upstream/assets/games/${name}-cover.png" _site/covers/
+            sed -i "s|/assets/games/${name}-cover.png|/games/covers/${name}-cover.png|g" _site/catalog-extensions.js _site/cover-overrides.js
+          done
+          test -s _site/index.html && test -s _site/en/index.html && test -s _site/ja/index.html
+          git -C upstream rev-parse HEAD > _site/source-commit.txt
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deploy
+        uses: actions/deploy-pages@v4
